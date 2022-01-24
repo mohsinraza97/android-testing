@@ -33,11 +33,10 @@ import kotlinx.coroutines.withContext
 /**
  * Concrete implementation to load tasks from the data sources into a cache.
  */
-class DefaultTasksRepository private constructor(application: Application) {
-
-    private val tasksRemoteDataSource: TasksDataSource
-    private val tasksLocalDataSource: TasksDataSource
-    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+class DefaultTasksRepository(
+    private val remoteDataSource: TasksDataSource,
+    private val localDataSource: TasksDataSource,
+    private val dispatcher: CoroutineDispatcher = Dispatchers.IO) : TasksRepository {
 
     companion object {
         @Volatile
@@ -45,23 +44,17 @@ class DefaultTasksRepository private constructor(application: Application) {
 
         fun getRepository(app: Application): DefaultTasksRepository {
             return INSTANCE ?: synchronized(this) {
-                DefaultTasksRepository(app).also {
+                val database = Room.databaseBuilder(app,
+                    ToDoDatabase::class.java, "Tasks.db")
+                    .build()
+                DefaultTasksRepository(TasksRemoteDataSource, TasksLocalDataSource(database.taskDao())).also {
                     INSTANCE = it
                 }
             }
         }
     }
 
-    init {
-        val database = Room.databaseBuilder(application.applicationContext,
-            ToDoDatabase::class.java, "Tasks.db")
-            .build()
-
-        tasksRemoteDataSource = TasksRemoteDataSource
-        tasksLocalDataSource = TasksLocalDataSource(database.taskDao())
-    }
-
-    suspend fun getTasks(forceUpdate: Boolean = false): Result<List<Task>> {
+    override suspend fun getTasks(forceUpdate: Boolean): Result<List<Task>> {
         if (forceUpdate) {
             try {
                 updateTasksFromRemoteDataSource()
@@ -69,118 +62,118 @@ class DefaultTasksRepository private constructor(application: Application) {
                 return Result.Error(ex)
             }
         }
-        return tasksLocalDataSource.getTasks()
+        return localDataSource.getTasks()
     }
 
-    suspend fun refreshTasks() {
+    override suspend fun refreshTasks() {
         updateTasksFromRemoteDataSource()
     }
 
-    fun observeTasks(): LiveData<Result<List<Task>>> {
-        return tasksLocalDataSource.observeTasks()
+    override fun observeTasks(): LiveData<Result<List<Task>>> {
+        return localDataSource.observeTasks()
     }
 
-    suspend fun refreshTask(taskId: String) {
+    override suspend fun refreshTask(taskId: String) {
         updateTaskFromRemoteDataSource(taskId)
     }
 
     private suspend fun updateTasksFromRemoteDataSource() {
-        val remoteTasks = tasksRemoteDataSource.getTasks()
+        val remoteTasks = remoteDataSource.getTasks()
 
         if (remoteTasks is Success) {
             // Real apps might want to do a proper sync.
-            tasksLocalDataSource.deleteAllTasks()
+            localDataSource.deleteAllTasks()
             remoteTasks.data.forEach { task ->
-                tasksLocalDataSource.saveTask(task)
+                localDataSource.saveTask(task)
             }
         } else if (remoteTasks is Result.Error) {
             throw remoteTasks.exception
         }
     }
 
-    fun observeTask(taskId: String): LiveData<Result<Task>> {
-        return tasksLocalDataSource.observeTask(taskId)
+    override fun observeTask(taskId: String): LiveData<Result<Task>> {
+        return localDataSource.observeTask(taskId)
     }
 
     private suspend fun updateTaskFromRemoteDataSource(taskId: String) {
-        val remoteTask = tasksRemoteDataSource.getTask(taskId)
+        val remoteTask = remoteDataSource.getTask(taskId)
 
         if (remoteTask is Success) {
-            tasksLocalDataSource.saveTask(remoteTask.data)
+            localDataSource.saveTask(remoteTask.data)
         }
     }
 
     /**
      * Relies on [getTasks] to fetch data and picks the task with the same ID.
      */
-    suspend fun getTask(taskId: String,  forceUpdate: Boolean = false): Result<Task> {
+    override suspend fun getTask(taskId: String, forceUpdate: Boolean): Result<Task> {
         if (forceUpdate) {
             updateTaskFromRemoteDataSource(taskId)
         }
-        return tasksLocalDataSource.getTask(taskId)
+        return localDataSource.getTask(taskId)
     }
 
-    suspend fun saveTask(task: Task) {
+    override suspend fun saveTask(task: Task) {
         coroutineScope {
-            launch { tasksRemoteDataSource.saveTask(task) }
-            launch { tasksLocalDataSource.saveTask(task) }
+            launch { remoteDataSource.saveTask(task) }
+            launch { localDataSource.saveTask(task) }
         }
     }
 
-    suspend fun completeTask(task: Task) {
+    override suspend fun completeTask(task: Task) {
         coroutineScope {
-            launch { tasksRemoteDataSource.completeTask(task) }
-            launch { tasksLocalDataSource.completeTask(task) }
+            launch { remoteDataSource.completeTask(task) }
+            launch { localDataSource.completeTask(task) }
         }
     }
 
-    suspend fun completeTask(taskId: String) {
-        withContext(ioDispatcher) {
+    override suspend fun completeTask(taskId: String) {
+        withContext(dispatcher) {
             (getTaskWithId(taskId) as? Success)?.let { it ->
                 completeTask(it.data)
             }
         }
     }
 
-    suspend fun activateTask(task: Task) = withContext<Unit>(ioDispatcher) {
+    override suspend fun activateTask(task: Task) = withContext<Unit>(dispatcher) {
         coroutineScope {
-            launch { tasksRemoteDataSource.activateTask(task) }
-            launch { tasksLocalDataSource.activateTask(task) }
+            launch { remoteDataSource.activateTask(task) }
+            launch { localDataSource.activateTask(task) }
         }
     }
 
-    suspend fun activateTask(taskId: String) {
-        withContext(ioDispatcher) {
+    override suspend fun activateTask(taskId: String) {
+        withContext(dispatcher) {
             (getTaskWithId(taskId) as? Success)?.let { it ->
                 activateTask(it.data)
             }
         }
     }
 
-    suspend fun clearCompletedTasks() {
+    override suspend fun clearCompletedTasks() {
         coroutineScope {
-            launch { tasksRemoteDataSource.clearCompletedTasks() }
-            launch { tasksLocalDataSource.clearCompletedTasks() }
+            launch { remoteDataSource.clearCompletedTasks() }
+            launch { localDataSource.clearCompletedTasks() }
         }
     }
 
-    suspend fun deleteAllTasks() {
-        withContext(ioDispatcher) {
+    override suspend fun deleteAllTasks() {
+        withContext(dispatcher) {
             coroutineScope {
-                launch { tasksRemoteDataSource.deleteAllTasks() }
-                launch { tasksLocalDataSource.deleteAllTasks() }
+                launch { remoteDataSource.deleteAllTasks() }
+                launch { localDataSource.deleteAllTasks() }
             }
         }
     }
 
-    suspend fun deleteTask(taskId: String) {
+    override suspend fun deleteTask(taskId: String) {
         coroutineScope {
-            launch { tasksRemoteDataSource.deleteTask(taskId) }
-            launch { tasksLocalDataSource.deleteTask(taskId) }
+            launch { remoteDataSource.deleteTask(taskId) }
+            launch { localDataSource.deleteTask(taskId) }
         }
     }
 
     private suspend fun getTaskWithId(id: String): Result<Task> {
-        return tasksLocalDataSource.getTask(id)
+        return localDataSource.getTask(id)
     }
 }

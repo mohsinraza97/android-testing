@@ -15,7 +15,6 @@
  */
 package com.example.android.architecture.blueprints.todoapp.taskdetail
 
-import android.app.Application
 import androidx.annotation.StringRes
 import androidx.lifecycle.*
 import com.example.android.architecture.blueprints.todoapp.Event
@@ -23,22 +22,18 @@ import com.example.android.architecture.blueprints.todoapp.R
 import com.example.android.architecture.blueprints.todoapp.data.Result
 import com.example.android.architecture.blueprints.todoapp.data.Result.Success
 import com.example.android.architecture.blueprints.todoapp.data.Task
-import com.example.android.architecture.blueprints.todoapp.data.source.DefaultTasksRepository
+import com.example.android.architecture.blueprints.todoapp.data.source.TasksRepository
 import kotlinx.coroutines.launch
 
 /**
  * ViewModel for the Details screen.
  */
-class TaskDetailViewModel(application: Application) : AndroidViewModel(application) {
-
-    // Note, for testing and architecture purposes, it's bad practice to construct the repository
-    // here. We'll show you how to fix this during the codelab
-    private val tasksRepository = DefaultTasksRepository.getRepository(application)
+class TaskDetailViewModel(private val repository: TasksRepository) : ViewModel() {
 
     private val _taskId = MutableLiveData<String>()
 
     private val _task = _taskId.switchMap { taskId ->
-        tasksRepository.observeTask(taskId).map { computeResult(it) }
+        repository.observeTask(taskId).map { computeResult(it) }
     }
     val task: LiveData<Task?> = _task
 
@@ -63,7 +58,7 @@ class TaskDetailViewModel(application: Application) : AndroidViewModel(applicati
 
     fun deleteTask() = viewModelScope.launch {
         _taskId.value?.let {
-            tasksRepository.deleteTask(it)
+            repository.deleteTask(it)
             _deleteTaskEvent.value = Event(Unit)
         }
     }
@@ -75,10 +70,10 @@ class TaskDetailViewModel(application: Application) : AndroidViewModel(applicati
     fun setCompleted(completed: Boolean) = viewModelScope.launch {
         val task = _task.value ?: return@launch
         if (completed) {
-            tasksRepository.completeTask(task)
+            repository.completeTask(task)
             showSnackbarMessage(R.string.task_marked_complete)
         } else {
-            tasksRepository.activateTask(task)
+            repository.activateTask(task)
             showSnackbarMessage(R.string.task_marked_active)
         }
     }
@@ -107,7 +102,7 @@ class TaskDetailViewModel(application: Application) : AndroidViewModel(applicati
         _task.value?.let {
             _dataLoading.value = true
             viewModelScope.launch {
-                tasksRepository.refreshTask(it.id)
+                repository.refreshTask(it.id)
                 _dataLoading.value = false
             }
         }
@@ -115,5 +110,14 @@ class TaskDetailViewModel(application: Application) : AndroidViewModel(applicati
 
     private fun showSnackbarMessage(@StringRes message: Int) {
         _snackbarText.value = Event(message)
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+class TaskDetailViewModelFactory (
+    private val repository: TasksRepository
+) : ViewModelProvider.NewInstanceFactory() {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        return (TaskDetailViewModel(repository) as T)
     }
 }
