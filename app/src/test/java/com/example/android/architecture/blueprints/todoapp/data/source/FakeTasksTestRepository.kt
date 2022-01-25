@@ -6,25 +6,23 @@ import com.example.android.architecture.blueprints.todoapp.data.Result
 import com.example.android.architecture.blueprints.todoapp.data.Task
 import kotlinx.coroutines.runBlocking
 
-class FakeTaskRepository : TasksRepository {
+class FakeTasksTestRepository : TasksRepository {
 
-    private var _currentTasks: LinkedHashMap<String, Task> = LinkedHashMap()
-    val currentTasks = _currentTasks
-
-    private val _observableTasks = MutableLiveData<Result<List<Task>>>()
+    private var currentTasks: LinkedHashMap<String, Task> = LinkedHashMap()
+    private val observableTasks = MutableLiveData<Result<List<Task>>>()
 
     override suspend fun getTasks(forceUpdate: Boolean): Result<List<Task>> {
-        val tasks = _currentTasks.values.toList()
+        val tasks = currentTasks.values.toList()
         return Result.Success(tasks)
     }
 
     override suspend fun refreshTasks() {
-        _observableTasks.value = getTasks()
+        observableTasks.value = getTasks()
     }
 
     override fun observeTasks(): LiveData<Result<List<Task>>> {
         runBlocking { refreshTasks() }
-        return _observableTasks
+        return observableTasks
     }
 
     override suspend fun refreshTask(taskId: String) {
@@ -45,7 +43,7 @@ class FakeTaskRepository : TasksRepository {
 
     override suspend fun completeTask(task: Task) {
         val completedTask = task.copy(isCompleted = true)
-        _currentTasks[task.id] = task
+        currentTasks[task.id] = task
         refreshTasks()
     }
 
@@ -75,7 +73,7 @@ class FakeTaskRepository : TasksRepository {
 
     fun addTasks(vararg tasks: Task) {
         for (task in tasks) {
-            _currentTasks[task.id] = task
+            currentTasks[task.id] = task
         }
         runBlocking { refreshTasks() }
     }
