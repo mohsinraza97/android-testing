@@ -2,11 +2,13 @@ package com.example.android.architecture.blueprints.todoapp.data
 
 import com.example.android.architecture.blueprints.todoapp.data.source.DefaultTasksRepository
 import com.example.android.architecture.blueprints.todoapp.data.source.FakeDataSource
+import com.example.android.architecture.blueprints.todoapp.util.TestDispatcherRule
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runBlockingTest
 import org.junit.Assert
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 
 @ExperimentalCoroutinesApi
@@ -24,16 +26,19 @@ class DefaultTasksRepositoryTest {
 
     private lateinit var repository: DefaultTasksRepository
 
+    @get:Rule
+    var testDispatcherRule = TestDispatcherRule()
+
     @Before
     fun setup() {
         remoteDataSource = FakeDataSource(remoteTasks.toMutableList())
         localDataSource = FakeDataSource(localTasks.toMutableList())
 
-        repository = DefaultTasksRepository(remoteDataSource, localDataSource, Dispatchers.Unconfined)
+        repository = DefaultTasksRepository(remoteDataSource, localDataSource, Dispatchers.Main)
     }
 
     @Test
-    fun getTasks_requestAllTasksFromRemoteDataSource() = runBlockingTest {
+    fun getTasks_requestAllTasksFromRemoteDataSource() = testDispatcherRule.runBlockingTest {
         // When tasks are requested from the tasks repository
         val tasks = repository.getTasks(true) as Result.Success
 

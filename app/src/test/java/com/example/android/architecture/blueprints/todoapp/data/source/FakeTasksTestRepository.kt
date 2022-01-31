@@ -8,10 +8,18 @@ import kotlinx.coroutines.runBlocking
 
 class FakeTasksTestRepository : TasksRepository {
 
-    private var currentTasks: LinkedHashMap<String, Task> = LinkedHashMap()
+    var currentTasks: LinkedHashMap<String, Task> = LinkedHashMap()
     private val observableTasks = MutableLiveData<Result<List<Task>>>()
+    private var shouldReturnError = false
+
+    fun setReturnError(value: Boolean) {
+        shouldReturnError = value
+    }
 
     override suspend fun getTasks(forceUpdate: Boolean): Result<List<Task>> {
+        if (shouldReturnError) {
+            return Result.Error(Exception("Test exception"))
+        }
         val tasks = currentTasks.values.toList()
         return Result.Success(tasks)
     }
@@ -34,7 +42,13 @@ class FakeTasksTestRepository : TasksRepository {
     }
 
     override suspend fun getTask(taskId: String, forceUpdate: Boolean): Result<Task> {
-        TODO("Not yet implemented")
+        if (shouldReturnError) {
+            return Result.Error(Exception("Test exception"))
+        }
+        currentTasks[taskId]?.let {
+            return Result.Success(it)
+        }
+        return Result.Error(Exception("Could not find task"))
     }
 
     override suspend fun saveTask(task: Task) {
@@ -43,7 +57,7 @@ class FakeTasksTestRepository : TasksRepository {
 
     override suspend fun completeTask(task: Task) {
         val completedTask = task.copy(isCompleted = true)
-        currentTasks[task.id] = task
+        currentTasks[task.id] = completedTask
         refreshTasks()
     }
 
