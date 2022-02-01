@@ -1,6 +1,6 @@
 package com.example.android.architecture.blueprints.todoapp.task
 
-import FakeTasksAndroidTestRepository
+import com.example.android.architecture.blueprints.todoapp.data.FakeTasksAndroidTestRepository
 import android.content.Context
 import android.os.Bundle
 import androidx.fragment.app.testing.launchFragmentInContainer
