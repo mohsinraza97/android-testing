@@ -26,6 +26,7 @@ android {
     }
     testOptions.unitTests {
         includeAndroidResources = true
+        returnDefaultValues = true
     }
     packagingOptions {
         resources.excludes.add("META-INF/*")
@@ -54,6 +55,8 @@ dependencies {
     implementation "androidx.lifecycle:lifecycle-livedata-ktx:$archLifecycleVersion"
     implementation "androidx.navigation:navigation-fragment-ktx:$navigationVersion"
     implementation "androidx.navigation:navigation-ui-ktx:$navigationVersion"
+
+    implementation "androidx.test.espresso:espresso-idling-resource:$espressoVersion"
 
     // Dependencies for local unit tests
     testImplementation "junit:junit:$junitVersion"

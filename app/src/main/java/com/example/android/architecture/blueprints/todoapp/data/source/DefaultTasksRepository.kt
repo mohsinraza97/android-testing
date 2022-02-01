@@ -24,6 +24,7 @@ import com.example.android.architecture.blueprints.todoapp.data.Task
 import com.example.android.architecture.blueprints.todoapp.data.source.local.TasksLocalDataSource
 import com.example.android.architecture.blueprints.todoapp.data.source.local.ToDoDatabase
 import com.example.android.architecture.blueprints.todoapp.data.source.remote.TasksRemoteDataSource
+import com.example.android.architecture.blueprints.todoapp.util.wrapEspressoIdlingResource
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
@@ -39,51 +40,65 @@ class DefaultTasksRepository(
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO) : TasksRepository {
 
     override suspend fun getTasks(forceUpdate: Boolean): Result<List<Task>> {
-        if (forceUpdate) {
-            try {
-                updateTasksFromRemoteDataSource()
-            } catch (ex: Exception) {
-                return Result.Error(ex)
+        wrapEspressoIdlingResource {
+            if (forceUpdate) {
+                try {
+                    updateTasksFromRemoteDataSource()
+                } catch (ex: Exception) {
+                    return Result.Error(ex)
+                }
             }
+            return localDataSource.getTasks()
         }
-        return localDataSource.getTasks()
     }
 
     override suspend fun refreshTasks() {
-        updateTasksFromRemoteDataSource()
+        wrapEspressoIdlingResource {
+            updateTasksFromRemoteDataSource()
+        }
     }
 
     override fun observeTasks(): LiveData<Result<List<Task>>> {
-        return localDataSource.observeTasks()
+        wrapEspressoIdlingResource {
+            return localDataSource.observeTasks()
+        }
     }
 
     override suspend fun refreshTask(taskId: String) {
-        updateTaskFromRemoteDataSource(taskId)
+        wrapEspressoIdlingResource {
+            updateTaskFromRemoteDataSource(taskId)
+        }
     }
 
     private suspend fun updateTasksFromRemoteDataSource() {
-        val remoteTasks = remoteDataSource.getTasks()
+        wrapEspressoIdlingResource {
+            val remoteTasks = remoteDataSource.getTasks()
 
-        if (remoteTasks is Success) {
-            // Real apps might want to do a proper sync.
-            localDataSource.deleteAllTasks()
-            remoteTasks.data.forEach { task ->
-                localDataSource.saveTask(task)
+            if (remoteTasks is Success) {
+                // Real apps might want to do a proper sync.
+                localDataSource.deleteAllTasks()
+                remoteTasks.data.forEach { task ->
+                    localDataSource.saveTask(task)
+                }
+            } else if (remoteTasks is Result.Error) {
+                throw remoteTasks.exception
             }
-        } else if (remoteTasks is Result.Error) {
-            throw remoteTasks.exception
         }
     }
 
     override fun observeTask(taskId: String): LiveData<Result<Task>> {
-        return localDataSource.observeTask(taskId)
+        wrapEspressoIdlingResource {
+            return localDataSource.observeTask(taskId)
+        }
     }
 
     private suspend fun updateTaskFromRemoteDataSource(taskId: String) {
-        val remoteTask = remoteDataSource.getTask(taskId)
+        wrapEspressoIdlingResource {
+            val remoteTask = remoteDataSource.getTask(taskId)
 
-        if (remoteTask is Success) {
-            localDataSource.saveTask(remoteTask.data)
+            if (remoteTask is Success) {
+                localDataSource.saveTask(remoteTask.data)
+            }
         }
     }
 
@@ -91,73 +106,93 @@ class DefaultTasksRepository(
      * Relies on [getTasks] to fetch data and picks the task with the same ID.
      */
     override suspend fun getTask(taskId: String, forceUpdate: Boolean): Result<Task> {
-        if (forceUpdate) {
-            updateTaskFromRemoteDataSource(taskId)
+        wrapEspressoIdlingResource {
+            if (forceUpdate) {
+                updateTaskFromRemoteDataSource(taskId)
+            }
+            return localDataSource.getTask(taskId)
         }
-        return localDataSource.getTask(taskId)
     }
 
     override suspend fun saveTask(task: Task) {
-        coroutineScope {
-            launch { remoteDataSource.saveTask(task) }
-            launch { localDataSource.saveTask(task) }
+        wrapEspressoIdlingResource {
+            coroutineScope {
+                launch { remoteDataSource.saveTask(task) }
+                launch { localDataSource.saveTask(task) }
+            }
         }
     }
 
     override suspend fun completeTask(task: Task) {
-        coroutineScope {
-            launch { remoteDataSource.completeTask(task) }
-            launch { localDataSource.completeTask(task) }
+        wrapEspressoIdlingResource {
+            coroutineScope {
+                launch { remoteDataSource.completeTask(task) }
+                launch { localDataSource.completeTask(task) }
+            }
         }
     }
 
     override suspend fun completeTask(taskId: String) {
-        withContext(dispatcher) {
-            (getTaskWithId(taskId) as? Success)?.let { it ->
-                completeTask(it.data)
+        wrapEspressoIdlingResource {
+            withContext(dispatcher) {
+                (getTaskWithId(taskId) as? Success)?.let { it ->
+                    completeTask(it.data)
+                }
             }
         }
     }
 
     override suspend fun activateTask(task: Task) = withContext<Unit>(dispatcher) {
-        coroutineScope {
-            launch { remoteDataSource.activateTask(task) }
-            launch { localDataSource.activateTask(task) }
+        wrapEspressoIdlingResource {
+            coroutineScope {
+                launch { remoteDataSource.activateTask(task) }
+                launch { localDataSource.activateTask(task) }
+            }
         }
     }
 
     override suspend fun activateTask(taskId: String) {
-        withContext(dispatcher) {
-            (getTaskWithId(taskId) as? Success)?.let { it ->
-                activateTask(it.data)
+        wrapEspressoIdlingResource {
+            withContext(dispatcher) {
+                (getTaskWithId(taskId) as? Success)?.let { it ->
+                    activateTask(it.data)
+                }
             }
         }
     }
 
     override suspend fun clearCompletedTasks() {
-        coroutineScope {
-            launch { remoteDataSource.clearCompletedTasks() }
-            launch { localDataSource.clearCompletedTasks() }
+        wrapEspressoIdlingResource {
+            coroutineScope {
+                launch { remoteDataSource.clearCompletedTasks() }
+                launch { localDataSource.clearCompletedTasks() }
+            }
         }
     }
 
     override suspend fun deleteAllTasks() {
-        withContext(dispatcher) {
-            coroutineScope {
-                launch { remoteDataSource.deleteAllTasks() }
-                launch { localDataSource.deleteAllTasks() }
+        wrapEspressoIdlingResource {
+            withContext(dispatcher) {
+                coroutineScope {
+                    launch { remoteDataSource.deleteAllTasks() }
+                    launch { localDataSource.deleteAllTasks() }
+                }
             }
         }
     }
 
     override suspend fun deleteTask(taskId: String) {
-        coroutineScope {
-            launch { remoteDataSource.deleteTask(taskId) }
-            launch { localDataSource.deleteTask(taskId) }
+        wrapEspressoIdlingResource {
+            coroutineScope {
+                launch { remoteDataSource.deleteTask(taskId) }
+                launch { localDataSource.deleteTask(taskId) }
+            }
         }
     }
 
     private suspend fun getTaskWithId(id: String): Result<Task> {
-        return localDataSource.getTask(id)
+        wrapEspressoIdlingResource {
+            return localDataSource.getTask(id)
+        }
     }
 }
